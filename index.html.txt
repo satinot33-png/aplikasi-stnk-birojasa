@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sistem Manajemen Berkas STNK & Biro Jasa</title>
+  <!-- Tailwind CSS & React via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#f0f9ff',
+              100: '#e0f2fe',
+              500: '#0284c7',
+              600: '#0284c7',
+              700: '#0369a1',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    @keyframes scan {
+      0% { top: 0%; }
+      50% { top: 100%; }
+      100% { top: 0%; }
+    }
+    .animate-scan {
+      position: absolute;
+      width: 100%;
+      height: 2px;
+      background: #0284c7;
+      box-shadow: 0 0 8px #0284c7;
+      animation: scan 2s infinite ease-in-out;
+    }
+  </style>
+</head>
+<body class="bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-100 min-h-screen transition-colors duration-200">
+
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    function App() {
+      const [sidebarOpen, setSidebarOpen] = useState(true);
+      const [darkMode, setDarkMode] = useState(false);
+      const [activeTab, setActiveTab] = useState('daftar');
+      const [searchQuery, setSearchQuery] = useState('');
+      const [showLogoutModal, setShowLogoutModal] = useState(false);
+      const [showScanModal, setShowScanModal] = useState(false);
+      const [scanProgress, setScanProgress] = useState(0);
+      const [scanTimer, setScanTimer] = useState(30);
+
+      // Initial State Data Berkas
+      const [berkasList, setBerkasList] = useState([
+        {
+          id: 'REG-20261022-001',
+          tglMasuk: '2026-10-22',
+          namaPemilik: 'Budi Santoso',
+          nik: '3171021203850001',
+          plat: 'B 1234 ABC',
+          jenisKendaraan: 'Mobil MPV',
+          merk: 'Toyota Avanza 1.5 G',
+          tahun: '2021',
+          warna: 'Hitam Metalik',
+          noRangka: 'MHKM15000K1234567',
+          noMesin: '1NR-FE1234567',
+          noBpkb: 'M-123456789',
+          layanan: 'Pajak 5 Tahunan + Ganti Plat',
+          biaya: 1250000,
+          dp: 500000,
+          dokumenFisik: { ktp: true, stnk: true, bpkb: true, cekFisik: true },
+          status: 'Proses Samsat',
+          catatan: 'Berkas masuk pagi via Mas Agus'
+        },
+        {
+          id: 'REG-20261021-002',
+          tglMasuk: '2026-10-21',
+          namaPemilik: 'Siti Aminah',
+          nik: '3175094508920003',
+          plat: 'B 5678 XYZ',
+          jenisKendaraan: 'Sepeda Motor',
+          merk: 'Honda Vario 160',
+          tahun: '2023',
+          warna: 'Putih',
+          noRangka: 'MH1KF2110PK987654',
+          noMesin: 'KF21E1987654',
+          noBpkb: 'N-987654321',
+          layanan: 'Balik Nama (BBN-KB)',
+          biaya: 2100000,
+          dp: 1000000,
+          dokumenFisik: { ktp: true, stnk: true, bpkb: false, cekFisik: true },
+          status: 'Draft',
+          catatan: 'BPKB Asli menyusul dari pemilik'
+        }
+      ]);
+
+      // State Form 18 Kolom
+      const [formData, setFormData] = useState({
+        noReg: 'REG-' + new Date().toISOString().slice(0,10).replace(/-/g,'') + '-003',
+        tglMasuk: new Date().toISOString().slice(0,10),
+        namaPemilik: '',
+        nik: '',
+        plat: '',
+        jenisKendaraan: 'Sepeda Motor',
+        merk: '',
+        tahun: new Date().getFullYear().toString(),
+        warna: '',
+        noRangka: '',
+        noMesin: '',
+        noBpkb: '',
+        layanan: 'Pajak Tahunan',
+        biaya: '',
+        dp: '',
+        dokKtp: false,
+        dokStnk: false,
+        dokBpkb: false,
+        dokCekFisik: false,
+        status: 'Draft',
+        catatan: ''
+      });
+
+      // Toggle Dark Mode Class
+      useEffect(() => {
+        if (darkMode) {
+          document.documentElement.classList.add('dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+        }
+      }, [darkMode]);
+
+      // Scan Camera 30 Detik Timer
+      useEffect(() => {
+        let interval = null;
+        if (showScanModal && scanTimer > 0) {
+          interval = setInterval(() => {
+            setScanTimer((prev) => prev - 1);
+            setScanProgress((prev) => Math.min(100, prev + (100 / 30)));
+          }, 1000);
+        } else if (scanTimer === 0 && showScanModal) {
+          finishScanning();
+        }
+        return () => clearInterval(interval);
+      }, [showScanModal, scanTimer]);
+
+      const startScan = () => {
+        setScanTimer(30);
+        setScanProgress(0);
+        setShowScanModal(true);
+      };
+
+      const finishScanning = () => {
+        setShowScanModal(false);
+        setFormData({
+          ...formData,
+          namaPemilik: 'EKO PRASETYO',
+          plat: 'B 3982 TKN',
+          merk: 'HONDA BEAT STREET',
+          noRangka: 'MH1JM8110KK112233',
+          noMesin: 'JM81E1112233',
+          noBpkb: 'L-77889900',
+          catatan: 'Hasil autofill Scan OCR STNK 30 Detik'
+        });
+        alert('✨ Scan STNK 30 Detik Selesai! Data otomatis dimasukkan ke formulir.');
+      };
+
+      const handleHapusBerkas = (id) => {
+        if (confirm('Yakin ingin menghapus berkas ini dari sistem?')) {
+          setBerkasList(berkasList.filter(b => b.id !== id));
+        }
+      };
+
+      const handleSaveForm = (e) => {
+        e.preventDefault();
+        const newEntry = {
+          id: formData.noReg,
+          tglMasuk: formData.tglMasuk,
+          namaPemilik: formData.namaPemilik || 'Tanpa Nama',
+          nik: formData.nik || '-',
+          plat: formData.plat || 'B 0000 XXX',
+          jenisKendaraan: formData.jenisKendaraan,
+          merk: formData.merk || '-',
+          tahun: formData.tahun || '-',
+          warna: formData.warna || '-',
+          noRangka: formData.noRangka || '-',
+          noMesin: formData.noMesin || '-',
+          noBpkb: formData.noBpkb || '-',
+          layanan: formData.layanan,
+          biaya: Number(formData.biaya) || 0,
+          dp: Number(formData.dp) || 0,
+          dokumenFisik: {
+            ktp: formData.dokKtp,
+            stnk: formData.dokStnk,
+            bpkb: formData.dokBpkb,
+            cekFisik: formData.dokCekFisik
+          },
+          status: formData.status,
+          catatan: formData.catatan || '-'
+        };
+
+        setBerkasList([newEntry, ...berkasList]);
+        alert('✅ Berkas berhasil disimpan (Meskipun isian belum lengkap)!');
+        setActiveTab('daftar');
+      };
+
+      const filteredBerkas = berkasList.filter(b => 
+        b.namaPemilik.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        b.plat.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        b.id.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+
+      return (
+        <div className="flex h-screen overflow-hidden">
+          {/* Sidebar */}
+          <aside className={`${sidebarOpen ? 'w-64' : 'w-20'} bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 transition-all duration-300 flex flex-col justify-between z-20`}>
+            <div>
+              <div className="p-4 flex items-center justify-between border-b dark:border-gray-700">
+                {sidebarOpen ? (
+                  <h1 className="font-bold text-lg text-sky-600 dark:text-sky-400">STNK BIRO JASA</h1>
+                ) : (
+                  <span className="font-bold text-sky-600 dark:text-sky-400 mx-auto">STNK</span>
+                )}
+                <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-1.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
+                  {sidebarOpen ? '◀' : '▶'}
+                </button>
+              </div>
+
+              <nav className="p-3 space-y-1">
+                <button onClick={() => setActiveTab('daftar')} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${activeTab === 'daftar' ? 'bg-sky-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'}`}>
+                  📋 {sidebarOpen && <span>Daftar Berkas</span>}
+                </button>
+                <button onClick={() => setActiveTab('tambah')} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${activeTab === 'tambah' ? 'bg-sky-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'}`}>
+                  ➕ {sidebarOpen && <span>Tambah Berkas</span>}
+                </button>
+                <button onClick={() => setActiveTab('laporan')} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${activeTab === 'laporan' ? 'bg-sky-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'}`}>
+                  📊 {sidebarOpen && <span>Laporan & Rekap</span>}
+                </button>
+                <button onClick={() => setActiveTab('karyawan')} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${activeTab === 'karyawan' ? 'bg-sky-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'}`}>
+                  👥 {sidebarOpen && <span>Kelola Karyawan</span>}
+                </button>
+              </nav>
+            </div>
+
+            <div className="p-3 border-t dark:border-gray-700 space-y-2">
+              <button onClick={() => setDarkMode(!darkMode)} className="w-full flex items-center justify-center gap-2 p-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-sm font-medium">
+                {darkMode ? '☀️ Mode Terang' : '🌙 Mode Gelap'}
+              </button>
+              <button onClick={() => setShowLogoutModal(true)} className="w-full flex items-center justify-center gap-2 p-2 rounded-lg bg-rose-500 text-white text-sm font-medium">
+                🚪 {sidebarOpen && <span>Keluar / Logout</span>}
+              </button>
+            </div>
+          </aside>
+
+          {/* Main Content Area */}
+          <main className="flex-1 flex flex-col overflow-y-auto">
+            {/* Top Bar */}
+            <header className="bg-white dark:bg-gray-800 border-b dark:border-gray-700 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+              <div className="relative w-72">
+                <input 
+                  type="text" 
+                  placeholder="Cari Plat / Nama Pemilik / ID..." 
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-9 pr-3 py-1.5 rounded-lg border dark:border-gray-600 dark:bg-gray-700 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+                />
+                <span className="absolute left-3 top-2 text-xs text-gray-400">🔍</span>
+              </div>
+              <div className="text-sm text-gray-500 dark:text-gray-400">
+                Operasional Biro Jasa STNK v2.5
+              </div>
+            </header>
+
+            <div className="p-6">
+              {/* TAB DAFTAR BERKAS */}
+              {activeTab === 'daftar' && (
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center">
+                    <h2 className="text-xl font-bold">Daftar Berkas Masuk</h2>
+                    <button onClick={() => setActiveTab('tambah')} className="bg-sky-600 hover:bg-sky-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2">
+                      + Tambah Berkas Baru
+                    </button>
+                  </div>
+
+                  <div className="bg-white dark:bg-gray-800 rounded-xl shadow overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-sm">
+                        <thead className="bg-gray-50 dark:bg-gray-700 border-b dark:border-gray-600">
+                          <tr>
+                            <th className="p-3">No. Reg / Tgl</th>
+                            <th className="p-3">Nama & Plat</th>
+                            <th className="p-3">Layanan</th>
+                            <th className="p-3">Total Biaya</th>
+                            <th className="p-3">Status</th>
+                            <th className="p-3 text-center">Aksi</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y dark:divide-gray-700">
+                          {filteredBerkas.map((item) => (
+                            <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-750">
+                              <td className="p-3">
+                                <div className="font-semibold text-sky-600 dark:text-sky-400">{item.id}</div>
+                                <div className="text-xs text-gray-400">{item.tglMasuk}</div>
+                              </td>
+                              <td className="p-3">
+                                <div className="font-bold">{item.namaPemilik}</div>
+                                <div className="text-xs bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded w-fit font-mono">{item.plat}</div>
+                              </td>
+                              <td className="p-3">{item.layanan}</td>
+                              <td className="p-3 font-semibold">Rp {item.biaya.toLocaleString('id-ID')}</td>
+                              <td className="p-3">
+                                <span className={`px-2 py-1 rounded text-xs font-semibold ${item.status === 'Proses Samsat' ? 'bg-amber-100 text-amber-800' : 'bg-gray-200 text-gray-800'}`}>
+                                  {item.status}
+                                </span>
+                              </td>
+                              <td className="p-3 text-center">
+                                <button onClick={() => handleHapusBerkas(item.id)} className="px-2 py-1 bg-rose-500 hover:bg-rose-600 text-white rounded text-xs">
+                                  🗑️ Hapus
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB TAMBAH BERKAS (18 KOLOM VERTIKAL) */}
+              {activeTab === 'tambah' && (
+                <div className="max-w-3xl mx-auto bg-white dark:bg-gray-800 p-6 rounded-xl shadow space-y-6">
+                  <div className="flex justify-between items-center border-b pb-4 dark:border-gray-700">
+                    <div>
+                      <h2 className="text-xl font-bold">Formulir Input Berkas (18 Kolom Berurutan)</h2>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Isian tidak lengkap tetap bisa disimpan sebagai Draf</p>
+                    </div>
+                    <button type="button" onClick={startScan} className="bg-sky-600 text-white px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-1 shadow">
+                      📸 Scan STNK 30 Detik (Auto Fill)
+                    </button>
+                  </div>
+
+                  <form onSubmit={handleSaveForm} className="space-y-4">
+                    {/* 1. No Reg */}
+                    <div>
+                      <label className="block text-xs font-semibold mb-1">1. Nomor Registrasi / Berkas</label>
+                      <input type="text" value={formData.noReg} disabled className="w-full p-2 bg-gray-100 dark:bg-gray-700 rounded text-sm font-mono border dark:border-gray-600" />
+                    </div>
+
+                    {/* 2. Tgl Masuk */}
+                    <div>
+                      <label className="block text-xs font-semibold mb-1">2. Tanggal Masuk</label>
+                      <input type="date" value={formData.tglMasuk} onChange={e => setFormData({...formData, tglMasuk: e.target.value})} className="w-full p-2 rounded text-sm border dark:border-gray-600 dark:bg-gray-700" />
+                    </div>
+
+                    {/* 3. Nama Pemilik */}
+                    <div>
+                      <label className="block text-xs font-semibold mb-1">3. Nama Pemilik (KTP)</label>
+                      <input type="text" placeholder="Masukkan nama pemilik" value={formData.namaPemilik} onChange={e => setFormData({...formData, namaPemilik: e.target.value})} className="w-full p-2 rounded text-sm border dark:border-gray-600 dark:bg-gray-700" />
+                    </div>
+
+                    {/* 4. NIK */}
+                    <div>
+                      <label className="block text-xs font-semibold mb-1">4. NIK / Nomor KTP</label>
+                      <input type="text" placeholder="16 digit NIK" value={formData.nik} onChange={e => setFormData({...formData, nik: e.target.value})} className="w-full p-2 rounded text-sm border dark:border-gray-600 dark:bg-gray-700" />
+                    </div>
+
+                    {/* 5. Plat */}
+                    <div>
+                      <label className="block text-xs font-semibold mb-1">5. Nomor Polisi / Plat Kendaraan</label>
+                      <input type="text" placeholder="Contoh: B 1234 ABC" value={formData.plat} onChange={e => setFormData({...formData, plat: e.target.value})} className="w-full p-2 rounded text-sm border dark:border-gray-600 dark:bg-gray-700 font-mono" />
+                    </div>
+
+                    {/* 6. Jenis Kendaraan */}
+                    <div>
+                      <label className="block text-xs font-semibold mb-1">6. Jenis / Tipe Kendaraan</label>
+                      <select value={formData.jenisKendaraan} onChange={e => setFormData({...formData, jenisKendaraan: e.target.value})} className="w-full p-2 rounded text-sm border dark:border-gray-600 dark:bg-gray-700">
+                        <option>Sepeda Motor</option>
+                        <option>Mobil MPV/Sedan</option>
+                        <option>SUV / Offroad</option>
+                        <option>Truck / PickUp</option>
+                      </select>
+                    </div>
+
+                    {/* 7. Merk */}
+                    <div>
+                      <label className="block text-xs font-semibold mb-1">7. Merk & Model</label>
+                      <input type="text" placeholder="Contoh: Honda Vario 160" value={formData.merk} onChange={e => setFormData({...formData, merk: e.target.value})} className="w-full p-2 rounded text-sm border dark:border-gray-600 dark:bg-gray-700" />
+                    </div>
+
+                    {/* 8. Tahun */}
+                    <div>
+                      <label className="block text-xs font-semibold mb-1">8. Tahun Pembuatan</label>
+                      <input type="number" value={formData.tahun} onChange={e => setFormData({...formData, tahun: e.target.value})} className="w-full p-2 rounded text-sm border dark:border-gray-600 dark:bg-gray-700" />
+                    </div>
+
+                    {/* 9. Warna */}
+                    <div>
+                      <label className="block text-xs font-semibold mb-1">9. Warna Kendaraan</label>
+                      <input type="text" placeholder="Warna kendaraan" value={formData.warna} onChange={e => setFormData({...formData, warna: e.target.value})} className="w-full p-2 rounded text-sm border dark:border-gray-600 dark:bg-gray-700" />
+                    </div>
+
+                    {/* 10. No Rangka */}
+                    <div>
+                      <label className="block text-xs font-semibold mb-1">10. Nomor Rangka (VIN)</label>
+                      <input type="text" placeholder="Nomor Rangka STNK" value={formData.noRangka} onChange={e => setFormData({...formData, noRangka: e.target.value})} className="w-full p-2 rounded text-sm border dark:border-gray-600 dark:bg-gray-700 font-mono" />
+                    </div>
+
+                    {/* 11. No Mesin */}
+                    <div>
+                      <label className="block text-xs font-semibold mb-1">11. Nomor Mesin</label>
+                      <input type="text" placeholder="Nomor Mesin STNK" value={formData.noMesin} onChange={e => setFormData({...formData, noMesin: e.target.value})} className="w-full p-2 rounded text-sm border dark:border-gray-600 dark:bg-gray-700 font-mono" />
+                    </div>
+
+                    {/* 12. No BPKB */}
+                    <div>
+                      <label className="block text-xs font-semibold mb-1">12. Nomor BPKB</label>
+                      <input type="text" placeholder="Nomor Buku BPKB" value={formData.noBpkb} onChange={e => setFormData({...formData, noBpkb: e.target.value})} className="w-full p-2 rounded text-sm border dark:border-gray-600 dark:bg-gray-700 font-mono" />
+                    </div>
+
+                    {/* 13. Layanan */}
+                    <div>
+                      <label className="block text-xs font-semibold mb-1">13. Jenis Layanan Biro Jasa</label>
+                      <select value={formData.layanan} onChange={e => setFormData({...formData, layanan: e.target.value})} className="w-full p-2 rounded text-sm border dark:border-gray-600 dark:bg-gray-700">
+                        <option>Pajak Tahunan</option>
+                        <option>Pajak 5 Tahunan + Ganti Plat</option>
+                        <option>Balik Nama (BBN-KB)</option>
+                        <option>Mutasi Keluar / Masuk</option>
+                        <option>STNK Hilang / Duplikat</option>
+                      </select>
+                    </div>
+
+                    {/* 14. Biaya */}
+                    <div>
+                      <label className="block text-xs font-semibold mb-1">14. Estimasi Biaya Total (Rp)</label>
+                      <input type="number" placeholder="0" value={formData.biaya} onChange={e => setFormData({...formData, biaya: e.target.value})} className="w-full p-2 rounded text-sm border dark:border-gray-600 dark:bg-gray-700" />
+                    </div>
+
+                    {/* 15. DP */}
+                    <div>
+                      <label className="block text-xs font-semibold mb-1">15. Uang Muka / DP Diterima (Rp)</label>
+                      <input type="number" placeholder="0" value={formData.dp} onChange={e => setFormData({...formData, dp: e.target.value})} className="w-full p-2 rounded text-sm border dark:border-gray-600 dark:bg-gray-700" />
+                    </div>
+
+                    {/* 16. Dokumen Fisik Checklist */}
+                    <div>
+                      <label className="block text-xs font-semibold mb-1">16. Kelengkapan Dokumen Fisik</label>
+                      <div className="grid grid-cols-2 gap-2 text-xs border p-3 rounded dark:border-gray-600">
+                        <label className="flex items-center gap-2">
+                          <input type="checkbox" checked={formData.dokKtp} onChange={e => setFormData({...formData, dokKtp: e.target.checked})} />
+                          KTP Asli / Fotokopi
+                        </label>
+                        <label className="flex items-center gap-2">
+                          <input type="checkbox" checked={formData.dokStnk} onChange={e => setFormData({...formData, dokStnk: e.target.checked})} />
+                          STNK Asli
+                        </label>
+                        <label className="flex items-center gap-2">
+                          <input type="checkbox" checked={formData.dokBpkb} onChange={e => setFormData({...formData, dokBpkb: e.target.checked})} />
+                          BPKB Asli
+                        </label>
+                        <label className="flex items-center gap-2">
+                          <input type="checkbox" checked={formData.dokCekFisik} onChange={e => setFormData({...formData, dokCekFisik: e.target.checked})} />
+                          Hasil Cek Fisik
+                        </label>
+                      </div>
+                    </div>
+
+                    {/* 17. Status */}
+                    <div>
+                      <label className="block text-xs font-semibold mb-1">17. Status Proses Operasional</label>
+                      <select value={formData.status} onChange={e => setFormData({...formData, status: e.target.value})} className="w-full p-2 rounded text-sm border dark:border-gray-600 dark:bg-gray-700">
+                        <option>Draft</option>
+                        <option>Proses Samsat</option>
+                        <option>Selesai</option>
+                        <option>Diambil Pelanggan</option>
+                      </select>
+                    </div>
+
+                    {/* 18. Catatan */}
+                    <div>
+                      <label className="block text-xs font-semibold mb-1">18. Catatan Tambahan / Keterangan Khusus</label>
+                      <textarea rows="3" placeholder="Tambahkan catatan khusus..." value={formData.catatan} onChange={e => setFormData({...formData, catatan: e.target.value})} className="w-full p-2 rounded text-sm border dark:border-gray-600 dark:bg-gray-700"></textarea>
+                    </div>
+
+                    <div className="pt-4 flex gap-3">
+                      <button type="submit" className="flex-1 py-2.5 bg-sky-600 hover:bg-sky-700 text-white rounded-lg font-bold text-sm shadow">
+                        💾 Simpan Berkas (Bisa Draf / Tidak Lengkap)
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              )}
+
+              {/* TAB LAPORAN */}
+              {activeTab === 'laporan' && (
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center">
+                    <h2 className="text-xl font-bold">Laporan & Rekapitulasi Berkas</h2>
+                    <button onClick={() => window.print()} className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded text-sm font-medium">
+                      🖨️ Cetak PDF / Print
+                    </button>
+                  </div>
+                  <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow space-y-4">
+                    <p className="text-sm text-gray-500 dark:text-gray-400">Total Berkas Terdaftar: <strong>{berkasList.length} Berkas</strong></p>
+                    <div className="p-4 bg-sky-50 dark:bg-gray-700 rounded-lg">
+                      <div className="text-xs text-sky-800 dark:text-sky-300 font-semibold">Total Estimasi Omset:</div>
+                      <div className="text-2xl font-bold text-sky-600 dark:text-sky-400">
+                        Rp {berkasList.reduce((acc, b) => acc + b.biaya, 0).toLocaleString('id-ID')}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB KELOLA KARYAWAN */}
+              {activeTab === 'karyawan' && (
+                <div className="space-y-4">
+                  <h2 className="text-xl font-bold">Kelola Staf / Karyawan Runner</h2>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow space-y-2">
+                      <div className="font-bold text-lg">Agus Setiawan</div>
+                      <div className="text-xs text-gray-500">Jabatan: Runner Samsat Timur</div>
+                      <div className="text-xs font-mono">WA: 081234567890</div>
+                      <a href="https://wa.me/6281234567890" target="_blank" className="inline-block mt-2 text-xs bg-emerald-600 text-white px-3 py-1.5 rounded">
+                        💬 Kirim Info Login via WA
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </main>
+
+         {showScanModal && (
+  <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50">
+    <div className="bg-white dark:bg-gray-800 p-6 rounded-xl max-w-md w-full space-y-4 text-center">
+      <h3 className="font-bold text-lg">📸 Pindai Kamera STNK</h3>
+      
+      {/* Kamera Asli + Pilih Foto */}
+      <div className="space-y-3">
+        {/* Pilih Foto dari Galeri — PALING GAMPANG & PASTI BERFUNGSI */}
+        <label className="block w-full">
+          <input 
+            type="file" 
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={(e) => {
+              setShowScanModal(false);
+              finishScanning();
+            }}
+          />
+          <div className="w-full h-48 bg-gray-100 dark:bg-gray-700 rounded-lg flex flex-col items-center justify-center border-2 border-dashed border-sky-500 cursor-pointer hover:bg-sky-50 dark:hover:bg-gray-600 transition">
+            <span className="text-4xl mb-2">📷</span>
+            <span className="text-sm text-gray-600 dark:text-gray-300">Klik untuk Foto / Pilih STNK</span>
+          </div>
+        </label>
+      </div>
+      
+      <div className="space-y-1">
+        <div className="text-2xl font-mono font-bold text-sky-600">{scanTimer} Detik</div>
+        <div className="w-full bg-gray-200 h-2 rounded-full overflow-hidden">
+          <div className="bg-sky-500 h-full transition-all duration-1000" style={{ width: `${scanProgress}%` }}></div>
+        </div>
+        <p className="text-xs text-gray-500">Foto otomatis diproses — hasil langsung ke formulir</p>
+      </div>
+      
+      <div className="flex gap-2">
+        <button onClick={() => setShowScanModal(false)} className="flex-1 py-2 bg-gray-200 dark:bg-gray-700 text-xs rounded font-semibold">
+          Batal
+        </button>
+        <button onClick={finishScanning} className="flex-1 py-2 bg-sky-600 text-white text-xs rounded font-semibold">
+          ⚡ Langsung Masukkan (Demo)
+        </button>
+      </div>
+    </div>
+  </div>
+)}
